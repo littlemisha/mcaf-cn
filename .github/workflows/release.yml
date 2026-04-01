@@ -1,0 +1,78 @@
+name: 打包并发布资源包
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - 'assets/minecraft/lang/zh_cn.json'
+    branches: [main, master]
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  release:
+    if: >
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 计算版本号
+        id: version
+        run: |
+          latest=$(git tag -l 'v*' | grep -E '^v[0-9]+$' | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            next_num=1
+          else
+            num=${latest#v}
+            next_num=$((num + 1))
+          fi
+          echo "num=$next_num" >> $GITHUB_OUTPUT
+          echo "tag=v$next_num" >> $GITHUB_OUTPUT
+          echo "filename=mcaf-cn-V${next_num}.zip" >> $GITHUB_OUTPUT
+          echo "release_title=mcaf-cn-v${next_num}" >> $GITHUB_OUTPUT
+          echo "将创建版本: v$next_num"
+
+      - name: 打包资源包
+        run: |
+          mkdir -p temp_pack/assets/minecraft/lang
+          cp assets/minecraft/lang/zh_cn.json temp_pack/assets/minecraft/lang/
+          cp assets/minecraft/lang/zh_tw.json temp_pack/assets/minecraft/lang/
+          cp assets/minecraft/lang/zh_hk.json temp_pack/assets/minecraft/lang/
+          cp pack.mcmeta temp_pack/
+          if [ -f "pack.png" ]; then
+            cp pack.png temp_pack/
+          fi
+          cd temp_pack
+          zip -r "../${{ steps.version.outputs.filename }}" . -x "*.git*" -x "*/\.*"
+          cd ..
+          rm -rf temp_pack
+          echo "已创建资源包: ${{ steps.version.outputs.filename }}"
+          ls -lh ${{ steps.version.outputs.filename }}
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.release_title }}
+          body: |
+            ## Minecraft 愚人节版本 AI 汉化资源包 ${{ steps.version.outputs.tag }}
+            
+            **包含内容：**
+            - ✅ 简体中文 (`zh_cn.json`) - AI 翻译
+            - ✅ 繁体中文（台湾）(`zh_tw.json`) - 基于简体中文转换
+            - ✅ 繁体中文（香港）(`zh_hk.json`) - 基于简体中文转换
+            
+            **适用版本：** Minecraft Java 版 2026 愚人节版本
+            
+            **使用方法：** 将 ZIP 文件放入 `.minecraft/resourcepacks/` 文件夹，在游戏内启用即可。
+            
+            ---
+            *由 GitHub Actions 自动生成*
+          files: ${{ steps.version.outputs.filename }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

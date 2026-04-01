@@ -1,0 +1,33 @@
+name: 重新生成繁体语言文件
+
+on:
+  workflow_dispatch:
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 安装 opencc
+        run: sudo apt-get install -y opencc
+
+      - name: 生成繁体中文（台湾）
+        run: opencc -i assets/minecraft/lang/zh_cn.json -o assets/minecraft/lang/zh_tw.json -c s2tw.json
+
+      - name: 生成繁体中文（香港）
+        run: opencc -i assets/minecraft/lang/zh_cn.json -o assets/minecraft/lang/zh_hk.json -c s2hk.json
+
+      - name: 提交并推送更改
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add assets/minecraft/lang/zh_tw.json assets/minecraft/lang/zh_hk.json
+          if git diff --cached --quiet; then
+            echo "没有文件变更，跳过提交"
+          else
+            git commit -m "chore: 重新生成繁体语言文件"
+            git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+          fi
